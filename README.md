@@ -13,7 +13,7 @@ YOLOv9 Object Detection with DeepSORT Tracking(ID + Trails) </H1>
 
 - Clone the repository
 ```
-git clone https://github.com/MuhammadMoinFaisal/YOLOv9-DeepSORT-Object-Tracking.git
+git clone https://github.com/khaitha/YOLOv9-DeepSORT-Custom
 ```
 - Goto the cloned folder.
 ```
@@ -60,13 +60,4 @@ python detect_dual_tracking.py --weights 'yolov9-c.pt' --source 'your video.mp4'
 !python detect_dual_tracking.py --weights 'yolov9-c.pt' --source 'your video.mp4' --device 0 --draw-trails 
 ```
 
-- Output file will be created in the ```working-dir/runs/detect/obj-tracking``` with original filename
-
-
-### Watch the Complete Step by Step Explanation
-
-- Video Tutorial Link  [`YouTube Link`](https://www.youtube.com/watch?v=Jx6oLBfDxRo)
-
-
-[![Watch the Complete Tutorial for the Step by Step Explanation](https://img.youtube.com/vi/Jx6oLBfDxRo/0.jpg)]([https://www.youtube.com/watch?v=Jx6oLBfDxRo](https://www.youtube.com/watch?v=Jx6oLBfDxRo))
 
