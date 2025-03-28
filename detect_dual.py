@@ -108,6 +108,7 @@ def run(
         # Process predictions
         for i, det in enumerate(pred):  # per image
             seen += 1
+            detection_count = len(det)
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
                 s += f'{i}: '
@@ -145,6 +146,14 @@ def run(
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
+                text = f"Detection: {detection_count}"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 2
+                font_thickness = 4
+                text_color = (255, 255, 255)
+                text_position = (50, im0.shape[0] - 50) # Top right corner
+
+                cv2.putText(im0, text, text_position, font, font_scale, text_color, font_thickness)
             # Stream results
             im0 = annotator.result()
             if view_img:
@@ -192,8 +201,8 @@ def parse_opt():
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolo.pt', help='model path or triton URL')
     parser.add_argument('--source', type=str, default=ROOT / 'data/images', help='file/dir/URL/glob/screen/0(webcam)')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
-    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
+    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[2048], help='inference size h,w')
+    parser.add_argument('--conf-thres', type=float, default=0.2, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')

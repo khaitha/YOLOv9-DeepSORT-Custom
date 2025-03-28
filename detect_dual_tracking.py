@@ -9,6 +9,9 @@ import numpy as np
 from deep_sort_pytorch.utils.parser import get_config
 from deep_sort_pytorch.deep_sort import DeepSort
 from collections import deque
+import cv2
+import pyautogui
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLO root directory
 if str(ROOT) not in sys.path:
@@ -31,33 +34,24 @@ def initialize_deepsort():
     deepsort = DeepSort(cfg_deep.DEEPSORT.REID_CKPT,
                         max_dist=cfg_deep.DEEPSORT.MAX_DIST,
                         # min_confidence  parameter sets the minimum tracking confidence required for an object detection to be considered in the tracking process
-                        min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
-                        #nms_max_overlap specifies the maximum allowed overlap between bounding boxes during non-maximum suppression (NMS)
+                        min_confidence=.1,
+                        # nms_max_overlap specifies the maximum allowed overlap between bounding boxes during non-maximum suppression (NMS)
                         nms_max_overlap=cfg_deep.DEEPSORT.NMS_MAX_OVERLAP,
-                        #max_iou_distance parameter defines the maximum intersection-over-union (IoU) distance between object detections
+                        # max_iou_distance parameter defines the maximum intersection-over-union (IoU) distance between object detections
                         max_iou_distance=cfg_deep.DEEPSORT.MAX_IOU_DISTANCE,
                         # Max_age: If an object's tracking ID is lost (i.e., the object is no longer detected), this parameter determines how many frames the tracker should wait before assigning a new id
                         max_age=cfg_deep.DEEPSORT.MAX_AGE, n_init=cfg_deep.DEEPSORT.N_INIT,
-                        #nn_budget: It sets the budget for the nearest-neighbor search.
+                        # nn_budget: It sets the budget for the nearest-neighbor search.
                         nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
                         use_cuda=True
-        )
+                        )
 
     return deepsort
 
 deepsort = initialize_deepsort()
 data_deque = {}
 def classNames():
-    cocoClassNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
-                  "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
-                  "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-                  "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
-                  "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-                  "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
-                  "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
-                  "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
-                  "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
-                  "teddy bear", "hair drier", "toothbrush"
+    cocoClassNames = ["Cell"
                   ]
     return cocoClassNames
 className = classNames()
@@ -117,21 +111,57 @@ def draw_boxes(frame, bbox_xyxy, draw_trails, identities=None, categories=None, 
                   cv2.line(frame, data_deque[id][i - 1], data_deque[id][i], color, thickness)    
     return frame
 
+manual_bounding_boxes = [
+    [1160, 111, 1175, 135, 0.12, 0.0],
+    [1085, 138, 1100, 162, 0.12, 0.0],
+    [1088, 140, 1103, 164, 0.12, 0.0],
+    [1091, 142, 1106, 166, 0.12, 0.0],
+    [1094, 144, 1109, 168, 0.12, 0.0],
+    [1097, 146, 1112, 170, 0.12, 0.0],
+    [1100, 148, 1115, 172, 0.12, 0.0],
+    [1103, 150, 1118, 174, 0.12, 0.0],
+    [1106, 152, 1121, 176, 0.12, 0.0],
+    [1109, 154, 1124, 178, 0.12, 0.0],
+    [1112, 156, 1127, 180, 0.12, 0.0],
+    [1115, 158, 1130, 182, 0.12, 0.0],
+    [1118, 160, 1133, 184, 0.12, 0.0],
+    [1121, 162, 1136, 186, 0.12, 0.0],
+    [1124, 164, 1139, 188, 0.12, 0.0],
+    [1127, 166, 1142, 190, 0.12, 0.0],
+    [1130, 168, 1145, 192, 0.12, 0.0],
+    [1133, 170, 1148, 194, 0.12, 0.0],
+    [1136, 172, 1151, 196, 0.12, 0.0],
+    [1139, 174, 1154, 198, 0.12, 0.0],
+    [1142, 176, 1157, 200, 0.12, 0.0],
+    [1145, 178, 1160, 202, 0.12, 0.0],
+    [1148, 180, 1163, 204, 0.12, 0.0],
+    [1151, 182, 1166, 206, 0.12, 0.0],
+    [1154, 184, 1169, 208, 0.12, 0.0],
+    [1157, 186, 1172, 210, 0.12, 0.0],
+    [1160, 188, 1175, 212, 0.12, 0.0],
+    [1163, 190, 1178, 214, 0.12, 0.0],
+    [1166, 192, 1181, 216, 0.12, 0.0],
+    [1169, 194, 1184, 218, 0.12, 0.0],
+]
+
+STATIC_WIDTH = 20
+STATIC_HEIGHT = 27
+
 @smart_inference_mode()
 def run(
-        weights=ROOT / 'yolo.pt',  # model path or triton URL
+        weights=ROOT / 'best.pt',  # model path or triton URL
         source=ROOT / 'data/images',  # file/dir/URL/glob/screen/0(webcam)
         data=ROOT / 'data/coco.yaml',  # dataset.yaml path
         imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.25,  # confidence threshold
-        iou_thres=0.45,  # NMS IOU threshold
+        conf_thres=0.1,  # confidence threshold
+        iou_thres=0.5,  # NMS IOU threshold
         max_det=1000,  # maximum detections per image
         device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
         view_img=False,  # show results
         nosave=False,  # do not save images/videos
         classes=None,  # filter by class: --class 0, or --class 0 2 3
         agnostic_nms=False,  # class-agnostic NMS
-        augment=False,  # augmented inference
+        augment=True,  # augmented inference
         visualize=False,  # visualize features
         update=False,  # update all models
         project=ROOT / 'runs/detect',  # save results to project/name
@@ -141,7 +171,7 @@ def run(
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
         draw_trails = False,
-):
+        ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -172,110 +202,177 @@ def run(
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     vid_path, vid_writer = [None] * bs, [None] * bs
-
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+
+    def crop_frame(im0, patch_size=640, overlap=240):
+        h, w, _ = im0.shape
+        patches = []
+        coords = []
+
+        # Calculate the step size based on overlap
+        step_size = patch_size - overlap
+
+        # Ensure we cover the entire height
+        for y in range(0, h, step_size):
+            for x in range(0, w, step_size):
+                # Calculate the end coordinates of the patch
+                x_end = min(x + patch_size, w)
+                y_end = min(y + patch_size, h)
+
+                # Adjust the starting coordinates if the patch goes out of bounds
+                if x_end - x < patch_size and x_end < w:
+                    x = x_end - patch_size
+                if y_end - y < patch_size and y_end < h:
+                    y = y_end - patch_size
+
+                # Extract the patch
+                patch = im0[y:y_end, x:x_end]
+                patches.append(patch)
+                coords.append((x, y))
+
+        return patches, coords
+
+    # Main loop
+    out = None
+    frame_number = 0  # Initialize the frame counter
+    fc = 0
+    fake_count = len(manual_bounding_boxes)
     for path, im, im0s, vid_cap, s in dataset:
-        with dt[0]:
-            im = torch.from_numpy(im).to(model.device)
+        im0 = im0s.copy()
+        patch_size = 640
+        all_detections = []  # To store detections from all patches
+
+        # Initialize VideoWriter on the first frame
+        if out is None:
+            frame_height, frame_width = im0s.shape[:2]  # Height, Width
+            frame_size = (frame_width, frame_height)
+            fps = vid_cap.get(cv2.CAP_PROP_FPS) if vid_cap else 30  # Use video capture for FPS
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+            output_video_path = 'output_tracking.mp4'
+            out = cv2.VideoWriter(output_video_path, fourcc, fps, frame_size)
+
+        # Step 1: Crop the frame
+        patches, coords = crop_frame(im0, patch_size)
+
+        for patch, (x_offset, y_offset) in zip(patches, coords):
+            # Resize and preprocess each patch
+            resized_patch = cv2.resize(patch, (patch_size, patch_size))
+            im = torch.from_numpy(resized_patch).to(model.device)
+
+            # Transpose to match PyTorch model input format: [batch_size, channels, height, width]
+            im = im.permute(2, 0, 1).unsqueeze(0)  # Convert [H, W, C] to [1, C, H, W]
+
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
-            if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
+            im /= 255  # Normalize to [0, 1]
 
-        # Inference
-        with dt[1]:
-            visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred = model(im, augment=augment, visualize=visualize)
-            pred = pred[0][1]
-
-        # NMS
-        with dt[2]:
+            # Now proceed with the rest of your pipeline
+            pred = model(im, augment=augment)[0]
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
-        # Second-stage classifier (optional)
-        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+            # Adjust detection boxes to full-frame coordinates
+            for det in pred:
+                if det is not None and len(det):  # Check if there are detections
+                    # Scale detection boxes
+                    scaled_boxes = scale_boxes((patch_size, patch_size), det[:, :4], patch.shape).round()
+                    det[:, :4] = scaled_boxes  # Update detection boxes
+                    det[:, [0, 2]] += x_offset  # Add x-offset
+                    det[:, [1, 3]] += y_offset  # Add y-offset
+                    #print(f'The offsets X {x_offset} and Y {y_offset}')
 
-        # Process predictions
-        for i, det in enumerate(pred):  # per image
-            seen += 1
-            if webcam:  # batch_size >= 1
-                p, im0, frame = path[i], im0s[i].copy(), dataset.count
-                s += f'{i}: '
+                    # Validate detections
+                    valid_detections = []
+                    for d in det:
+                        x1, y1, x2, y2 = map(int, d[:4])
+                        if (x2 - x1) >= 1 and (y2 - y1) >= 1:  # Check for valid bounding box size
+                            if x1 < 0 or y1 < 0:
+                                print(f"Detection out of bounds skipped: {d}")
+                                continue
+                            valid_detections.append(d.tolist())
+
+                    all_detections.extend(valid_detections)
+
+        #if frame_number < len(manual_bounding_boxes):
+        #    all_detections.append(manual_bounding_boxes[frame_number])
+
+        # Step 3: Combine detections from all patches
+        if len(all_detections) == 0:
+            print("No detections found in any patches.")
+            continue
+        #print('THESE ARE ALL THE CONTENTS OF DETECTIONS!', all_detections)
+        if all_detections:
+            # Pass combined detections to DeepSORT
+            xywh_bboxs = []
+            confs = []
+            oids = []
+            for *xyxy, conf, cls in all_detections:
+                x1, y1, x2, y2 = map(int, xyxy)
+                cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                w, h = x2 - x1, y2 - y1
+
+                #print(f"Detection - x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2}, conf: {conf}, cls: {cls}")
+                xywh_bboxs.append([cx, cy, w, h])
+                confs.append(conf)
+                oids.append(int(cls))
+            xywhs = torch.tensor(xywh_bboxs)
+
+            # Write frame number once for the current frame
+            with open("bounding_boxes.txt", "a") as file:
+                file.write(f"Frame: {frame_number}\n")
+            frame_number +=1
+
+            for bbox, oid in zip(xywh_bboxs, oids):
+                cx, cy, w, h = map(int, bbox)  # Convert bounding box to integers
+                x1 = cx - STATIC_WIDTH // 2  # Top-left x
+                y1 = cy - STATIC_HEIGHT // 2  # Top-left y
+                x2 = cx + STATIC_WIDTH // 2  # Bottom-right x
+                y2 = cy + STATIC_HEIGHT // 2  # Bottom-right y
+
+                # Draw bounding box and center coordinates on the image
+                cv2.rectangle(im0, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Draw a green rectangle for the box
+                cv2.putText(im0, f"({cx},{cy})", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+                # Append bounding box and frame number information to a text file
+                #with open("bounding_boxes.txt", "a") as file:  # Open file in append mode
+                    #file.write(f"{cx} {cy} {w} {h}\n")
+
+            # Show the image with current detections
+            cv2.imshow("Current Detections", im0)
+
+            # Add a delay and allow for exit
+            if cv2.waitKey(1) == ord('q'):  # Press 'q' to quit visualization
+                break
+
+            # Update DeepSORT tracking
+            if len(xywh_bboxs) == 0:
+                outputs = deepsort.update(None, None, None, im0)
             else:
-                p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
+                xywhs = torch.tensor(xywh_bboxs, dtype=torch.float32)
+                confss = torch.tensor(confs, dtype=torch.float32)
+                outputs = deepsort.update(xywhs, confss, oids, im0)
 
-            p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
-            s += '%gx%g ' % im.shape[2:]  # print string
-            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-            ims = im0.copy()
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
+            # Draw bounding boxes on the original frame
+            if len(outputs) > 0:
+                bbox_xyxy = outputs[:, :4]
+                identities = outputs[:, -2]
+                object_id = outputs[:, -1]
+                with open("info.txt", "a") as file:  # Open file in append mode
+                    file.write(f"Frame: {frame_number}\n{np.column_stack((identities,bbox_xyxy))}\n")
+                draw_boxes(im0, bbox_xyxy, draw_trails, identities, object_id)
 
-                # Print results
-                for c in det[:, 5].unique():
-                    n = (det[:, 5] == c).sum()  # detections per class
-                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-                xywh_bboxs = []
-                confs = []
-                oids = []
-                outputs = []
-                # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    x1, y1, x2, y2 = xyxy
-                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                    #Find the Center Coordinates for each of the detected object
-                    cx, cy = int((x1+x2)/2), int((y1+y2)/2)
-                    #Find the Width and Height of the Boundng box
-                    bbox_width = abs(x1-x2)
-                    bbox_height = abs(y1-y2)
-                    xcycwh = [cx, cy, bbox_width, bbox_height]
-                    xywh_bboxs.append(xcycwh)
-                    conf = math.ceil(conf*100)/100
-                    confs.append(conf)
-                    classNameInt = int(cls)
-                    oids.append(classNameInt)
-                xywhs = torch.tensor(xywh_bboxs)
-                confss = torch.tensor(confs)
-                outputs = deepsort.update(xywhs, confss, oids, ims)
-                if len(outputs) > 0:
-                    bbox_xyxy = outputs[:, :4]
-                    identities = outputs[:, -2]
-                    object_id = outputs[:, -1]
-                    draw_boxes(ims, bbox_xyxy, draw_trails, identities, object_id)
+        # Write the frame to the output video
+        if out is not None:
+            out.write(im0)
+        # Display or save the results
+        if view_img:
+            cv2.imshow("Tracking", im0)
+            if cv2.waitKey(1) == ord('q'):
+                break
 
-            # Stream results
-            if view_img:
-                if platform.system() == 'Linux' and p not in windows:
-                    windows.append(p)
-                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
-                    cv2.resizeWindow(str(p), ims.shape[1], ims.shape[0])
-                cv2.imshow(str(p), ims)
-                cv2.waitKey(1)  # 1 millisecond
-            # Save results (image with detections)
-            if save_img:
-                if vid_path[i] != save_path:  # new video
-                    vid_path[i] = save_path
-                    if isinstance(vid_writer[i], cv2.VideoWriter):
-                        vid_writer[i].release()  # release previous video writer
-                    if vid_cap:  # video
-                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    else:  # stream
-                        fps, w, h = 30, ims.shape[1], ims.shape[0]
-                    save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
-                    vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                vid_writer[i].write(ims)
-
-        # Print time (inference-only)
-        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
-    if update:
-        strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
+    cv2.destroyAllWindows()
+    if out is not None:
+        out.release()
 
 
 def parse_opt():
@@ -284,9 +381,9 @@ def parse_opt():
     parser.add_argument('--source', type=str, default=ROOT / 'data/images', help='file/dir/URL/glob/screen/0(webcam)')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
-    parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
+    parser.add_argument('--conf-thres', type=float, default=0.15, help='confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.3, help='NMS IoU threshold')
+    parser.add_argument('--max-det', type=int, default=80, help='maximum detections per image')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='show results')
     parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
@@ -305,14 +402,12 @@ def parse_opt():
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
-    return opt
+    return opt 
 
 
 def main(opt):
     # check_requirements(exclude=('tensorboard', 'thop'))
     run(**vars(opt))
-
-
 
 if __name__ == "__main__":
     opt = parse_opt()
