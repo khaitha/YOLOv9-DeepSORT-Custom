@@ -27,7 +27,7 @@ def extract_positions(data):
 
         if obj_id not in positions:
             positions[obj_id] = []
-        positions[obj_id].append((cx, cy, frame))  # Store X, Y, Time
+        positions[obj_id].append((cx,frame,cy))  # Store X, Y, Time
 
     return positions
 
