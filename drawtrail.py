@@ -1,122 +1,173 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import cv2
 import os
 import csv
 
-def read_data_from_file(filename):
-    with open(filename, 'r') as file:
-        lines = file.readlines()
+def read_info_file(filename):
+    """
+    Parse the DeepSORT info.txt, returning a list of
+    (frame_number, obj_id, x1, y1, x2, y2) tuples.
+    """
     data = []
-    for line in lines:
-        if line.strip().startswith("Frame:"):
-            continue
-        cleaned_line = line.strip().replace('[', '').replace(']', '')
-        data.append(list(map(int, cleaned_line.split())))
-    return np.array(data)
+    current_frame = None
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("Frame:"):
+                parts = line.split()
+                current_frame = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else None
+            else:
+                vals = list(map(int, line.replace('[','').replace(']','').split()))
+                if len(vals) == 5 and current_frame is not None:
+                    obj_id, x1, y1, x2, y2 = vals
+                    data.append((current_frame, obj_id, x1, y1, x2, y2))
+    return data
 
-def extract_positions(data):
-    positions = {}
-    bboxes = {}  # Dictionary to store bounding boxes
-
-    for row in data:
-        obj_id, x1, y1, x2, y2 = row
+def extract_info(data):
+    """
+    Build:
+      - positions[obj_id]    = list of (cx, cy) across all frames
+      - bboxes[obj_id]       = last-seen (x1, y1, x2, y2)
+      - first_frames[obj_id] = frame index of first detection
+    """
+    positions    = {}
+    bboxes       = {}
+    first_frames = {}
+    for frame, obj_id, x1, y1, x2, y2 in data:
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-
-        if obj_id not in positions:
-            positions[obj_id] = []
-        positions[obj_id].append((cx, cy))
-
-        # Store the latest bounding box for each obj_id
+        positions.setdefault(obj_id, []).append((cx, cy))
         bboxes[obj_id] = (x1, y1, x2, y2)
+        first_frames.setdefault(obj_id, frame)
+    return positions, bboxes, first_frames
 
-    return positions, bboxes
+def extract_frame(video_path, frame_number):
+    """
+    Capture exactly frame_number from video.
+    """
+    cap = cv2.VideoCapture(video_path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise RuntimeError(f"Couldn’t read frame {frame_number} from {video_path}")
+    return frame
 
-def plot_trail_with_image(obj_id, positions, bboxes, img_size=(2048, 2048), crop_size=600, draw_trails=True, csv_writer=None):
+def plot_trail_with_image(
+    obj_id,
+    positions,
+    bboxes,
+    first_frame_idx,
+    video_path,
+    draw_trails=True,
+    csv_writer=None
+):
+    """
+    Left: original frame at first_frame_idx (uncropped).
+    Right: white canvas same size showing object’s trail.
+    """
     if obj_id not in positions:
-        print(f"No data found for Object ID {obj_id}.")
+        print(f"No data for Object ID {obj_id}")
         return
-    os.makedirs('trail_result', exist_ok=True)
 
-    trail_img = np.ones((img_size[1], img_size[0], 3), dtype=np.uint8) * 255
-    trails = positions[obj_id]
+    # 1) load the specified frame
+    first_frame = extract_frame(video_path, first_frame_idx)
+    h, w = first_frame.shape[:2]
 
-    total_distance = 0
-    up_movements = 0
-    down_movements = 0
-    line_data = []
+    # 2) draw bounding box on it
+    if obj_id in bboxes:
+        x1, y1, x2, y2 = bboxes[obj_id]
+        cv2.rectangle(first_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+        cv2.putText(first_frame, f'ID: {obj_id}', (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+    # 3) prepare trail canvas
+    trail_img = np.ones((h, w, 3), dtype=np.uint8) * 255
+    trails     = positions[obj_id]
+    total_dist = up = down = 0
+    line_data  = []
 
     if draw_trails:
-        for i in range(1, len(trails)):
-            if trails[i - 1] is None or trails[i] is None:
-                continue
-            prev_x, prev_y = trails[i - 1]
-            curr_x, curr_y = trails[i]
+        for (px, py), (cx, cy) in zip(trails, trails[1:]):
+            if abs(px - cx) < 50 and abs(py - cy) < 50:
+                p = (int(px), int(py))
+                c = (int(cx), int(cy))
+                cv2.line(trail_img, p, c, (255, 0, 0), 1)
+                line_data.append((p, c))
+                d = np.hypot(cx - px, cy - py)
+                total_dist += d
+                up   += (cy < py)
+                down += (cy > py)
 
-            if abs(prev_x - curr_x) < 50 and abs(prev_y - curr_y) < 50:
-                start_point = (int(prev_x), int(prev_y))
-                end_point = (int(curr_x), int(curr_y))
-                cv2.line(trail_img, start_point, end_point, (255, 0, 0), 1)
-                line_data.append((start_point, end_point))
+    # 4) compute stats
+    displacement = np.hypot(trails[-1][0] - trails[0][0],
+                            trails[-1][1] - trails[0][1]) if trails else 0
+    speed  = total_dist / 60.0
+    status = "Motile" if total_dist > 3 else "Not Moving"
 
-                total_distance += np.sqrt((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2)
+    # 5) side-by-side combine
+    combined = np.hstack((first_frame, trail_img))
 
-                if curr_y < prev_y:
-                    up_movements += 1
-                elif curr_y > prev_y:
-                    down_movements += 1
+    # 6) overlay stats on the right half
+    sx = w + 50
+    sy = h - 50
+    lh = 30
+    stats = [
+        f"ID: {obj_id}",
+        f"Distance: {int(total_dist)}",
+        f"Displacement: {int(displacement)}",
+        f"Speed: {speed:.2f}",
+        f"Up: {up} | Down: {down}",
+        f"Status: {status}"
+    ]
+    for i, txt in enumerate(stats):
+        y = sy - (len(stats) - i - 1) * lh
+        cv2.putText(combined, txt, (sx, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2, cv2.LINE_AA)
 
-    displacement = np.sqrt((trails[-1][0] - trails[0][0]) ** 2 + (trails[-1][1] - trails[0][1]) ** 2) if trails else 0
-    speed = total_distance / 60.0
-    status = "Motile" if total_distance > 3 else "Not Moving"
-
-    img_path = 'first_frames/reference_img.jpg'
-    if os.path.exists(img_path):
-        first_frame = cv2.imread(img_path)
-        first_frame = cv2.resize(first_frame, (img_size[0], img_size[1]))
-        if obj_id in bboxes:
-            x1, y1, x2, y2 = bboxes[obj_id]
-            cv2.rectangle(first_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(first_frame, f'ID: {obj_id}', (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-    else:
-        first_frame = np.ones((img_size[1], img_size[0], 3), dtype=np.uint8) * 200
-        cv2.putText(first_frame, 'Image Not Found', (50, img_size[1] // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-
-    first_frame_cropped = first_frame[:, :-crop_size]
-    trail_img_cropped = trail_img[:, crop_size + 150:]
-    combined = np.hstack((first_frame_cropped, trail_img_cropped))
-
-    start_x = combined.shape[1] - 500
-    start_y = combined.shape[0] - 100
-    line_height = 40
-
-    cv2.putText(combined, f"ID: {obj_id}", (start_x, start_y - 5 * line_height),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(combined, f"Distance: {int(total_distance)}", (start_x, start_y - 4 * line_height),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(combined, f"Displacement: {int(displacement)}", (start_x, start_y - 3 * line_height),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(combined, f"Speed: {speed:.2f}", (start_x, start_y - 2 * line_height),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(combined, f"Up: {up_movements} | Down: {down_movements}", (start_x, start_y - line_height),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(combined, f"Status: {status}", (start_x, start_y),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3, cv2.LINE_AA)
+    # 7) optional CSV
     if csv_writer:
-        csv_writer.writerow([obj_id, int(total_distance), int(displacement), speed, up_movements, down_movements, status, line_data])
+        csv_writer.writerow([
+            obj_id,
+            int(total_dist),
+            int(displacement),
+            speed,
+            up,
+            down,
+            status,
+            line_data
+        ])
 
-    output_path = f'trail_result/trail_{obj_id}.png'
-    cv2.imwrite(output_path, combined)
-    print(f"Saved: {output_path}")
+    # 8) save
+    base    = os.path.splitext(os.path.basename(video_path))[0]
+    out_dir = f"trail_result/{base}"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = f"{out_dir}/trail_{obj_id}.png"
+    cv2.imwrite(out_path, combined)
+    print(f"Saved: {out_path}")
 
-frames = read_data_from_file('info.txt')
-positions, bboxes = extract_positions(frames)
+if __name__ == "__main__":
+    INFO_FILE  = 'prediction/axon_ICC_chan01_info.txt'
+    VIDEO_PATH = 'Videos/axon_ICC_chan01.mp4'  # ← your video
+    CSV_OUT    = 'tracking_data.csv'
 
-with open('tracking_data.csv', mode='w', newline='') as file:
-    csv_writer = csv.writer(file)
-    csv_writer.writerow(["Object ID", "Total Distance", "Displacement", "Speed", "Up Movements", "Down Movements", "Status", "Line Data"])
+    raw           = read_info_file(INFO_FILE)
+    positions, bboxes, first_frames = extract_info(raw)
 
-    for obj_id in positions.keys():
-        plot_trail_with_image(obj_id, positions, bboxes, csv_writer=csv_writer)
+    with open(CSV_OUT, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            "Object ID", "Total Distance", "Displacement",
+            "Speed", "Up Movements", "Down Movements",
+            "Status", "Line Data"
+        ])
+        for obj_id, frame_idx in first_frames.items():
+            plot_trail_with_image(
+                obj_id,
+                positions,
+                bboxes,
+                first_frame_idx=frame_idx,
+                video_path=VIDEO_PATH,
+                csv_writer=writer
+            )
