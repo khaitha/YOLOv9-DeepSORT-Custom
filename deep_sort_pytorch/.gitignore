@@ -10,3 +10,4 @@ build/
 *.avi
 *.so
 *.txt
+!ckpt.t7
